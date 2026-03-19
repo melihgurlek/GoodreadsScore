@@ -11,8 +11,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 const ratingMatch = html.match(/class="RatingStatistics__rating"[^>]*>([\d.]+)</) 
                                  || html.match(/"ratingValue":\s*"?([\d.]+)"?/);
 
-                const countMatch = html.match(/data-testid="ratingsCount"[^>]*>\s*([\d,]+)(?:\s|&nbsp;)*ratings/i) 
-                                || html.match(/"ratingCount":\s*(\d+)/);
+                const countMatch = html.match(/data-testid="ratingsCount"[^>]*>\s*([\d.,\s]+)/i) 
+                                 || html.match(/"ratingCount":\s*"?([\d]+)"?/);
 
                 let formattedCount = "";
                 if (countMatch && countMatch[1]) {
