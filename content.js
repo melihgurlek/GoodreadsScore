@@ -2,6 +2,7 @@
 const hostname = window.location.hostname;
 let identifier = null;
 let targetElement = null;
+let insertPosition = "afterend"; 
 
 if (hostname.includes("amazon")) {
     identifier = getAmazonIdentifier();
@@ -9,6 +10,19 @@ if (hostname.includes("amazon")) {
 } else if (hostname.includes("kitapyurdu.com")) {
     identifier = getKitapyurduIdentifier();
     targetElement = document.querySelector(".rating"); 
+    insertPosition = "beforeend"; 
+    
+    if (targetElement) {
+        targetElement.style.display = "flex";
+        targetElement.style.alignItems = "center";
+        targetElement.style.gap = "15px"; 
+        
+        const starList = targetElement.querySelector("ul");
+        if (starList) {
+            starList.style.marginBottom = "0";
+            starList.style.paddingBottom = "0";
+        }
+    }
 }
 
 // --- EXTRACTION LOGIC ---
@@ -39,12 +53,12 @@ function getKitapyurduIdentifier() {
 // --- MAIN EXECUTION ---
 
 if (identifier && targetElement) {
-    injectSkeleton(targetElement);
+    injectSkeleton(targetElement, insertPosition);
 
     chrome.storage.local.get([identifier], (result) => {
         if (result[identifier]) {
             const data = result[identifier];
-            updateUI(data.rating, data.count, data.url, identifier, targetElement);
+            updateUI(data.rating, data.count, data.url, identifier, targetElement, insertPosition);
         } else {
             chrome.runtime.sendMessage({ type: "FETCH_RATING", asin: identifier }, (response) => {
                 if (chrome.runtime.lastError || !response || !response.rating) {
@@ -68,7 +82,7 @@ if (identifier && targetElement) {
 
 // --- UI INJECTION ---
 
-function injectSkeleton(targetNode) {
+function injectSkeleton(targetNode, position) {
     if (document.getElementById("goodreads-extension-ui")) return;
 
     const skeletonDiv = document.createElement("div");
@@ -76,8 +90,8 @@ function injectSkeleton(targetNode) {
     
     skeletonDiv.style.display = "inline-flex";
     skeletonDiv.style.alignItems = "center";
-    skeletonDiv.style.marginTop = "8px"; 
-    skeletonDiv.style.marginBottom = "8px";
+    
+    
     skeletonDiv.style.fontFamily = "inherit";
     skeletonDiv.style.color = "#555";
     skeletonDiv.style.fontSize = "14px";
@@ -89,16 +103,15 @@ function injectSkeleton(targetNode) {
         <span style="font-style: italic;">Fetching rating...</span>
     `;
 
-    targetNode.insertAdjacentElement("afterend", skeletonDiv);
+    targetNode.insertAdjacentElement(position, skeletonDiv);
 }
 
-function updateUI(rating, count, url, identifier, targetNode) {
+function updateUI(rating, count, url, identifier, targetNode, position) {
     const container = document.getElementById("goodreads-extension-ui");
     if (!container) return; 
 
     const finalUrl = url || `https://www.goodreads.com/search?q=${identifier}`;
     const reviewsUrl = finalUrl.includes('#') ? finalUrl : finalUrl + "#CommunityReviews"; 
-    
     const logoUrl = chrome.runtime.getURL("goodreads-logo.png");
 
     container.innerHTML = `
