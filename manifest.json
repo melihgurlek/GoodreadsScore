@@ -8,36 +8,28 @@
       "storage"
     ],
     "host_permissions": [
-      "*://*.amazon.com/*",
       "*://*.amazon.com.tr/*",
-      "*://*.amazon.co.uk/*",
-      "*://*.amazon.de/*",
-      "*://*.amazon.fr/*",
       "*://*.kitapyurdu.com/*",
       "*://*.goodreads.com/*"
     ],
     "icons": {
-        "16": "goodreads-logo.png",
-        "48": "goodreads-logo.png",
-        "128": "goodreads-logo.png"
+        "16": "goodreads-logo16.png",
+        "48": "goodreads-logo48.png",
+        "128": "goodreads-logo128.png"
     },
 
     "action": {
         "default_icon": {
-        "16": "goodreads-logo.png",
-        "48": "goodreads-logo.png",
-        "128": "goodreads-logo.png"
+        "16": "goodreads-logo16.png",
+        "48": "goodreads-logo48.png",
+        "128": "goodreads-logo128.png"
         }
     },
     "web_accessible_resources": [
       {
         "resources": ["goodreads-logo.png"],
         "matches": [
-          "*://*.amazon.com/*", 
           "*://*.amazon.com.tr/*", 
-          "*://*.amazon.co.uk/*", 
-          "*://*.amazon.de/*",
-          "*://*.amazon.fr/*",
           "*://*.kitapyurdu.com/*"
         ]
       }
@@ -48,11 +40,7 @@
     "content_scripts": [
       {
         "matches": [
-          "*://*.amazon.com/*",
           "*://*.amazon.com.tr/*",
-          "*://*.amazon.co.uk/*",
-          "*://*.amazon.de/*",
-          "*://*.amazon.fr/*",
           "*://*.kitapyurdu.com/*"
         ],
         "js": ["content.js"]
