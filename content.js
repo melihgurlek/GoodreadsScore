@@ -4,10 +4,10 @@ let identifier = null;
 let targetElement = null;
 let insertPosition = "afterend"; 
 
-if (hostname.includes("amazon")) {
+if (hostname.includes("amazon") && isAmazonBookPage()) {
     identifier = getAmazonIdentifier();
     targetElement = document.getElementById("bylineInfo") || document.getElementById("title");
-} else if (hostname.includes("kitapyurdu.com")) {
+} else if (hostname.includes("kitapyurdu.com") && isKitapyurduBookPage()) {
     identifier = getKitapyurduIdentifier();
     targetElement = document.querySelector(".rating"); 
     insertPosition = "beforeend"; 
@@ -23,6 +23,29 @@ if (hostname.includes("amazon")) {
             starList.style.paddingBottom = "0";
         }
     }
+}
+
+// --- PAGE DETECTION ---
+
+function isAmazonBookPage() {
+    // Must be a product page URL
+    if (!/\/(?:dp|gp\/product)\/[A-Z0-9]{10}/.test(window.location.pathname)) return false;
+    // Must have book-specific attributes (ISBN or book details section)
+    const hasIsbn = document.querySelector('#rpi-attribute-book_details-isbn13, #rpi-attribute-book_details-isbn10');
+    const hasBookBinding = document.querySelector('#rpi-attribute-book_details- binding');
+    return !!(hasIsbn || hasBookBinding);
+}
+
+function isKitapyurduBookPage() {
+    // Product pages contain /p- in the URL
+    if (!/\/kitap\//.test(window.location.pathname)) return false;
+    // Must have an ISBN row in the attributes table
+    const rows = document.querySelectorAll(".attributes table tr");
+    for (let row of rows) {
+        const cells = row.querySelectorAll("td");
+        if (cells.length === 2 && cells[0].innerText.includes("ISBN:")) return true;
+    }
+    return false;
 }
 
 // --- EXTRACTION LOGIC ---
