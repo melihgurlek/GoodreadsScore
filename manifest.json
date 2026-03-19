@@ -1,0 +1,55 @@
+{
+    "manifest_version": 3,
+    "name": "Goodreads on Amazon",
+    "version": "1.0",
+    "description": "Displays Goodreads ratings on Amazon book pages.",
+    "permissions": [
+      "activeTab",
+      "storage"
+    ],
+    "host_permissions": [
+      "*://*.amazon.com/*",
+      "*://*.amazon.com.tr/*",
+      "*://*.amazon.co.uk/*",
+      "*://*.amazon.de/*",
+      "*://*.goodreads.com/*"
+    ],
+    "icons": {
+        "16": "goodreads-logo.png",
+        "48": "goodreads-logo.png",
+        "128": "goodreads-logo.png"
+    },
+
+    "action": {
+        "default_icon": {
+        "16": "goodreads-logo.png",
+        "48": "goodreads-logo.png",
+        "128": "goodreads-logo.png"
+        }
+    },
+    "web_accessible_resources": [
+      {
+        "resources": ["goodreads-logo.png"],
+        "matches": [
+          "*://*.amazon.com/*", 
+          "*://*.amazon.com.tr/*", 
+          "*://*.amazon.co.uk/*", 
+          "*://*.amazon.de/*"
+        ]
+      }
+    ],
+    "background": {
+      "service_worker": "background.js"
+    },
+    "content_scripts": [
+      {
+        "matches": [
+          "*://*.amazon.com/*",
+          "*://*.amazon.com.tr/*",
+          "*://*.amazon.co.uk/*",
+          "*://*.amazon.de/*"
+        ],
+        "js": ["content.js"]
+      }
+    ]
+  }
