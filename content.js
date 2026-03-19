@@ -74,16 +74,14 @@ function injectSkeleton() {
 
 function updateUI(rating, count, url, identifier) {
     const container = document.getElementById("goodreads-extension-ui");
-    if (!container) return; // Failsafe in case skeleton missed
+    if (!container) return; // Failsafe
 
     const finalUrl = url || `https://www.goodreads.com/search?q=${identifier}`;
     
-    // Add the specific HTML anchor to jump straight to the reviews section
     const reviewsUrl = finalUrl.includes('#') ? finalUrl : finalUrl + "#CommunityReviews"; 
     
     const logoUrl = chrome.runtime.getURL("goodreads-logo.png");
 
-    // We split the UI into two separate <a> tags side-by-side
     container.innerHTML = `
         <a href="${finalUrl}" target="_blank" style="display: inline-flex; align-items: center; text-decoration: none; color: inherit; margin-right: 4px;" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">
             <img src="${logoUrl}" alt="Goodreads" style="height: 16px; margin-right: 8px; border-radius: 2px;">
@@ -96,6 +94,5 @@ function updateUI(rating, count, url, identifier) {
         </a>` : ''}
     `;
     
-    // Remove the skeleton styling
     container.style.color = "inherit";
 }
