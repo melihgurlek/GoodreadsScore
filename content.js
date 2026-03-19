@@ -58,7 +58,7 @@ if (identifier && targetElement) {
     chrome.storage.local.get([identifier], (result) => {
         if (result[identifier]) {
             const data = result[identifier];
-            updateUI(data.rating, data.count, data.url, identifier, targetElement, insertPosition);
+            updateUI(data.rating, data.count, data.url, identifier, targetElement);
         } else {
             chrome.runtime.sendMessage({ type: "FETCH_RATING", asin: identifier }, (response) => {
                 if (chrome.runtime.lastError || !response || !response.rating) {
@@ -90,7 +90,13 @@ function injectSkeleton(targetNode, position) {
     
     skeletonDiv.style.display = "inline-flex";
     skeletonDiv.style.alignItems = "center";
+    skeletonDiv.style.alignItems = "center";
     
+    if (position === "afterend") {
+        skeletonDiv.style.marginTop = "6px";
+    }
+    
+    skeletonDiv.style.fontFamily = "inherit";
     
     skeletonDiv.style.fontFamily = "inherit";
     skeletonDiv.style.color = "#555";
@@ -106,7 +112,7 @@ function injectSkeleton(targetNode, position) {
     targetNode.insertAdjacentElement(position, skeletonDiv);
 }
 
-function updateUI(rating, count, url, identifier, targetNode, position) {
+function updateUI(rating, count, url, identifier, targetNode) {
     const container = document.getElementById("goodreads-extension-ui");
     if (!container) return; 
 
