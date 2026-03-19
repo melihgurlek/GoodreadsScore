@@ -1,33 +1,54 @@
-function getBookIdentifier() {
+// --- SITE ROUTER ---
+const hostname = window.location.hostname;
+let identifier = null;
+let targetElement = null;
+
+if (hostname.includes("amazon")) {
+    identifier = getAmazonIdentifier();
+    targetElement = document.getElementById("bylineInfo") || document.getElementById("title");
+} else if (hostname.includes("kitapyurdu.com")) {
+    identifier = getKitapyurduIdentifier();
+    targetElement = document.querySelector(".rating"); 
+}
+
+// --- EXTRACTION LOGIC ---
+
+function getAmazonIdentifier() {
     const isbn13Node = document.querySelector('#rpi-attribute-book_details-isbn13 .rpi-attribute-value span');
-    if (isbn13Node && isbn13Node.innerText) {
-        return isbn13Node.innerText.replace(/-/g, '').trim(); 
-    }
+    if (isbn13Node && isbn13Node.innerText) return isbn13Node.innerText.replace(/-/g, '').trim(); 
 
     const isbn10Node = document.querySelector('#rpi-attribute-book_details-isbn10 .rpi-attribute-value span');
-    if (isbn10Node && isbn10Node.innerText) {
-        return isbn10Node.innerText.trim();
-    }
+    if (isbn10Node && isbn10Node.innerText) return isbn10Node.innerText.trim();
 
     const match = window.location.pathname.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/);
     return match ? match[1] : null;
 }
 
-const identifier = getBookIdentifier();
+function getKitapyurduIdentifier() {
+    const rows = document.querySelectorAll(".attributes table tr");
+    
+    for (let row of rows) {
+        const cells = row.querySelectorAll("td");
+        if (cells.length === 2 && cells[0].innerText.includes("ISBN:")) {
+            return cells[1].innerText.trim();
+        }
+    }
+    return null;
+}
 
-if (identifier) {
-    injectSkeleton();
+// --- MAIN EXECUTION ---
+
+if (identifier && targetElement) {
+    injectSkeleton(targetElement);
 
     chrome.storage.local.get([identifier], (result) => {
         if (result[identifier]) {
-            console.log("[Goodreads Ext] Loading from cache.");
             const data = result[identifier];
-            updateUI(data.rating, data.count, data.url, identifier);
+            updateUI(data.rating, data.count, data.url, identifier, targetElement);
         } else {
-            console.log("[Goodreads Ext] Fetching from network...");
             chrome.runtime.sendMessage({ type: "FETCH_RATING", asin: identifier }, (response) => {
                 if (chrome.runtime.lastError || !response || !response.rating) {
-                    updateUI("N/A", null, null, identifier);
+                    updateUI("N/A", null, null, identifier, targetElement);
                     return;
                 }
 
@@ -39,24 +60,23 @@ if (identifier) {
                 };
                 chrome.storage.local.set(cacheData);
 
-                updateUI(response.rating, response.count, response.url, identifier);
+                updateUI(response.rating, response.count, response.url, identifier, targetElement);
             });
         }
     });
 }
 
-function injectSkeleton() {
-    if (document.getElementById("goodreads-extension-ui")) return;
+// --- UI INJECTION ---
 
-    const targetElement = document.getElementById("bylineInfo") || document.getElementById("title");
-    if (!targetElement) return;
+function injectSkeleton(targetNode) {
+    if (document.getElementById("goodreads-extension-ui")) return;
 
     const skeletonDiv = document.createElement("div");
     skeletonDiv.id = "goodreads-extension-ui";
     
     skeletonDiv.style.display = "inline-flex";
     skeletonDiv.style.alignItems = "center";
-    skeletonDiv.style.marginTop = "4px";
+    skeletonDiv.style.marginTop = "8px"; 
     skeletonDiv.style.marginBottom = "8px";
     skeletonDiv.style.fontFamily = "inherit";
     skeletonDiv.style.color = "#555";
@@ -69,15 +89,14 @@ function injectSkeleton() {
         <span style="font-style: italic;">Fetching rating...</span>
     `;
 
-    targetElement.insertAdjacentElement("afterend", skeletonDiv);
+    targetNode.insertAdjacentElement("afterend", skeletonDiv);
 }
 
-function updateUI(rating, count, url, identifier) {
+function updateUI(rating, count, url, identifier, targetNode) {
     const container = document.getElementById("goodreads-extension-ui");
-    if (!container) return; // Failsafe
+    if (!container) return; 
 
     const finalUrl = url || `https://www.goodreads.com/search?q=${identifier}`;
-    
     const reviewsUrl = finalUrl.includes('#') ? finalUrl : finalUrl + "#CommunityReviews"; 
     
     const logoUrl = chrome.runtime.getURL("goodreads-logo.png");

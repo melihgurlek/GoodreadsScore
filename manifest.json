@@ -12,6 +12,8 @@
       "*://*.amazon.com.tr/*",
       "*://*.amazon.co.uk/*",
       "*://*.amazon.de/*",
+      "*://*.amazon.fr/*",
+      "*://*.kitapyurdu.com/*",
       "*://*.goodreads.com/*"
     ],
     "icons": {
@@ -34,7 +36,9 @@
           "*://*.amazon.com/*", 
           "*://*.amazon.com.tr/*", 
           "*://*.amazon.co.uk/*", 
-          "*://*.amazon.de/*"
+          "*://*.amazon.de/*",
+          "*://*.amazon.fr/*",
+          "*://*.kitapyurdu.com/*"
         ]
       }
     ],
@@ -47,7 +51,9 @@
           "*://*.amazon.com/*",
           "*://*.amazon.com.tr/*",
           "*://*.amazon.co.uk/*",
-          "*://*.amazon.de/*"
+          "*://*.amazon.de/*",
+          "*://*.amazon.fr/*",
+          "*://*.kitapyurdu.com/*"
         ],
         "js": ["content.js"]
       }
