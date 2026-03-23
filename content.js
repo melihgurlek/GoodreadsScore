@@ -63,14 +63,24 @@ function getAmazonIdentifier() {
 
 function getKitapyurduIdentifier() {
     const rows = document.querySelectorAll(".attributes table tr");
+    let fallbackIsbn = null;
     
     for (let row of rows) {
         const cells = row.querySelectorAll("td");
+        
         if (cells.length === 2 && cells[0].innerText.includes("ISBN:")) {
-            return cells[1].innerText.trim();
+            const cleanIsbn = cells[1].innerText.replace(/-/g, '').trim();
+            
+            if (cleanIsbn.length === 13) {
+                return cleanIsbn;
+            }
+            
+            if (!fallbackIsbn) {
+                fallbackIsbn = cleanIsbn;
+            }
         }
     }
-    return null;
+    return fallbackIsbn;
 }
 
 // --- MAIN EXECUTION ---
