@@ -1,49 +1,45 @@
 {
-    "manifest_version": 3,
-    "name": "Goodreads on Amazon",
-    "version": "1.0",
-    "description": "Displays Goodreads ratings on Amazon book pages.",
-    "permissions": [
-      "activeTab",
-      "storage"
-    ],
-    "host_permissions": [
-      "*://*.amazon.com.tr/*",
-      "*://*.kitapyurdu.com/*",
-      "*://*.goodreads.com/*"
-    ],
-    "icons": {
-        "16": "goodreads-logo16.png",
-        "48": "goodreads-logo48.png",
-        "128": "goodreads-logo128.png"
-    },
-
-    "action": {
-        "default_icon": {
-        "16": "goodreads-logo16.png",
-        "48": "goodreads-logo48.png",
-        "128": "goodreads-logo128.png"
-        }
-    },
-    "web_accessible_resources": [
-      {
-        "resources": ["goodreads-logo.png"],
-        "matches": [
-          "*://*.amazon.com.tr/*", 
-          "*://*.kitapyurdu.com/*"
-        ]
+  "manifest_version": 3,
+  "name": "Goodreads on Amazon",
+  "version": "1.0",
+  "description": "Displays Goodreads ratings on Amazon book pages.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "*://*.goodreads.com/*"
+  ],
+  "icons": {
+      "16": "goodreads-logo16.png",
+      "48": "goodreads-logo48.png",
+      "128": "goodreads-logo128.png"
+  },
+  "action": {
+      "default_icon": {
+          "16": "goodreads-logo16.png",
+          "48": "goodreads-logo48.png",
+          "128": "goodreads-logo128.png"
       }
-    ],
-    "background": {
-      "service_worker": "background.js"
-    },
-    "content_scripts": [
-      {
-        "matches": [
-          "*://*.amazon.com.tr/*",
-          "*://*.kitapyurdu.com/*"
-        ],
-        "js": ["content.js"]
-      }
-    ]
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["goodreads-logo.png"],
+      "matches": [
+        "*://*.amazon.com.tr/*", 
+        "*://*.kitapyurdu.com/*"
+      ]
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.amazon.com.tr/*",
+        "*://*.kitapyurdu.com/*"
+      ],
+      "js": ["content.js"]
+    }
+  ]
+}
