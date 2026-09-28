@@ -32,5 +32,5 @@ A Chrome extension that shows Goodreads ratings on Amazon and Kitapyurdu book pa
 ## Notes
 
 - Only activates on book pages, not search results or category pages
-- Goodreads is queried by ISBN (preferred) or ASIN as fallback
+- Goodreads is queried by ISBN (preferred) or ASIN, then by book title if that finds nothing (Goodreads' ISBN search stopped returning results in Sep 2026); a results page resolves to its first book
 - Ratings are cached in `chrome.storage.local` — clear extension storage to force a re-fetch

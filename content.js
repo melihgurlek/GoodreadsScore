@@ -32,7 +32,7 @@ function isAmazonBookPage() {
     if (!/\/(?:dp|gp\/product)\/[A-Z0-9]{10}/.test(window.location.pathname)) return false;
     // Must have book-specific attributes (ISBN or book details section)
     const hasIsbn = document.querySelector('#rpi-attribute-book_details-isbn13, #rpi-attribute-book_details-isbn10');
-    const hasBookBinding = document.querySelector('#rpi-attribute-book_details- binding');
+    const hasBookBinding = document.querySelector('#rpi-attribute-book_details-binding');
     return !!(hasIsbn || hasBookBinding);
 }
 
@@ -83,6 +83,12 @@ function getKitapyurduIdentifier() {
     return fallbackIsbn;
 }
 
+// Fallback query for Goodreads; drops edition noise like "(Penguin Classics)".
+function getTitle() {
+    const node = document.querySelector("#productTitle, h1");
+    return node ? node.innerText.replace(/\(.*?\)|\[.*?\]/g, "").trim() : null;
+}
+
 // --- MAIN EXECUTION ---
 
 if (identifier && targetElement) {
@@ -93,7 +99,7 @@ if (identifier && targetElement) {
             const data = result[identifier];
             updateUI(data.rating, data.count, data.url, identifier, targetElement);
         } else {
-            chrome.runtime.sendMessage({ type: "FETCH_RATING", asin: identifier }, (response) => {
+            chrome.runtime.sendMessage({ type: "FETCH_RATING", asin: identifier, title: getTitle() }, (response) => {
                 if (chrome.runtime.lastError || !response || !response.rating) {
                     updateUI("N/A", null, null, identifier, targetElement);
                     return;
