@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Goodreads on Amazon",
-  "version": "1.1",
-  "description": "Displays Goodreads ratings on Amazon book pages.",
+  "version": "1.2",
+  "description": "Shows the Goodreads rating on book pages at Amazon, Kitapyurdu, D&R, BKM Kitap, Idefix and other bookstores.",
   "permissions": [
     "storage"
   ],
@@ -25,8 +25,19 @@
     {
       "resources": ["goodreads-logo.png"],
       "matches": [
-        "*://*.amazon.com.tr/*", 
-        "*://*.kitapyurdu.com/*"
+        "*://*.amazon.com.tr/*",
+        "*://*.amazon.com/*",
+        "*://*.amazon.co.uk/*",
+        "*://*.amazon.de/*",
+        "*://*.kitapyurdu.com/*",
+        "*://*.dr.com.tr/*",
+        "*://*.idefix.com/*",
+        "*://*.bkmkitap.com/*",
+        "*://*.hepsiburada.com/*",
+        "*://*.trendyol.com/*",
+        "*://*.pandora.com.tr/*",
+        "*://*.babil.com/*",
+        "*://*.kitapsec.com/*"
       ]
     }
   ],
@@ -37,7 +48,18 @@
     {
       "matches": [
         "*://*.amazon.com.tr/*",
-        "*://*.kitapyurdu.com/*"
+        "*://*.amazon.com/*",
+        "*://*.amazon.co.uk/*",
+        "*://*.amazon.de/*",
+        "*://*.kitapyurdu.com/*",
+        "*://*.dr.com.tr/*",
+        "*://*.idefix.com/*",
+        "*://*.bkmkitap.com/*",
+        "*://*.hepsiburada.com/*",
+        "*://*.trendyol.com/*",
+        "*://*.pandora.com.tr/*",
+        "*://*.babil.com/*",
+        "*://*.kitapsec.com/*"
       ],
       "js": ["content.js"]
     }

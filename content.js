@@ -3,6 +3,7 @@ const hostname = window.location.hostname;
 let identifier = null;
 let targetElement = null;
 let insertPosition = "afterend"; 
+let structuredTitle = null;
 
 if (hostname.includes("amazon") && isAmazonBookPage()) {
     identifier = getAmazonIdentifier();
@@ -22,6 +23,15 @@ if (hostname.includes("amazon") && isAmazonBookPage()) {
             starList.style.marginBottom = "0";
             starList.style.paddingBottom = "0";
         }
+    }
+} else {
+    // Every other store: D&R, BKM Kitap, Idefix and the rest declare the book they sell as
+    // schema.org data for search engines, ISBN included, so one reader covers them all.
+    const book = getStructuredBook();
+    if (book) {
+        identifier = book.isbn;
+        structuredTitle = book.title;
+        targetElement = document.querySelector("h1");
     }
 }
 
@@ -46,6 +56,35 @@ function isKitapyurduBookPage() {
         if (cells.length === 2 && cells[0].innerText.includes("ISBN:")) return true;
     }
     return false;
+}
+
+// The book a page declares in its JSON-LD: {isbn, title}, or null when it declares none.
+// An ISBN-13 is an EAN starting 978 or 979, so a gtin13 is only taken when it is one: a store's
+// non-book product never passes for a book.
+function getStructuredBook() {
+    for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
+        let data;
+        try { data = JSON.parse(script.textContent); } catch { continue; }
+        const stack = [data];
+        while (stack.length) {
+            const node = stack.pop();
+            if (Array.isArray(node)) { stack.push(...node); continue; }
+            if (!node || typeof node !== "object") continue;
+            const types = [].concat(node["@type"] || []);
+            if (types.includes("Book") || types.includes("Product")) {
+                for (const key of ["isbn", "gtin13", "gtin"]) {
+                    const value = String(node[key] || "").replace(/[^0-9Xx]/g, "");
+                    if (/^97[89]\d{10}$/.test(value) || (key === "isbn" && /^\d{9}[\dXx]$/.test(value))) {
+                        return { isbn: value.toUpperCase(), title: typeof node.name === "string" ? node.name : null };
+                    }
+                }
+            }
+            for (const value of Object.values(node)) {
+                if (value && typeof value === "object") stack.push(value);
+            }
+        }
+    }
+    return null;
 }
 
 // --- EXTRACTION LOGIC ---
@@ -86,16 +125,21 @@ function getKitapyurduIdentifier() {
 // Fallback query for Goodreads; drops edition noise like "(Penguin Classics)".
 function getTitle() {
     const node = document.querySelector("#productTitle, h1");
-    return node ? node.innerText.replace(/\(.*?\)|\[.*?\]/g, "").trim() : null;
+    const text = structuredTitle || (node ? node.innerText : null);
+    return text ? text.replace(/\(.*?\)|\[.*?\]/g, "").trim() : null;
 }
 
 // --- MAIN EXECUTION ---
+
+const CACHE_DAYS = 30;
 
 if (identifier && targetElement) {
     injectSkeleton(targetElement, insertPosition);
 
     chrome.storage.local.get([identifier], (result) => {
-        if (result[identifier]) {
+        // Ratings move slowly but they do move, and entries from before 1.2 carry no date.
+        const cached = result[identifier];
+        if (cached && cached.at && Date.now() - cached.at < CACHE_DAYS * 864e5) {
             const data = result[identifier];
             updateUI(data.rating, data.count, data.url, identifier, targetElement);
         } else {
@@ -109,7 +153,8 @@ if (identifier && targetElement) {
                 cacheData[identifier] = {
                     rating: response.rating,
                     count: response.count,
-                    url: response.url
+                    url: response.url,
+                    at: Date.now()
                 };
                 chrome.storage.local.set(cacheData);
 
