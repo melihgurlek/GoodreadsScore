@@ -3,25 +3,30 @@ const hostname = window.location.hostname;
 let identifier = null;
 let targetElement = null;
 let insertPosition = "afterend"; 
+let structuredTitle = null;
 
 if (hostname.includes("amazon") && isAmazonBookPage()) {
     identifier = getAmazonIdentifier();
     targetElement = document.getElementById("bylineInfo") || document.getElementById("title");
 } else if (hostname.includes("kitapyurdu.com") && isKitapyurduBookPage()) {
     identifier = getKitapyurduIdentifier();
-    targetElement = document.querySelector(".rating"); 
-    insertPosition = "beforeend"; 
-    
+    // The row holding the store's own stars and review count, under the author.
+    targetElement = document.querySelector(".ky-pd-heading__meta");
+    insertPosition = "beforeend";
+
     if (targetElement) {
         targetElement.style.display = "flex";
         targetElement.style.alignItems = "center";
-        targetElement.style.gap = "15px"; 
-        
-        const starList = targetElement.querySelector("ul");
-        if (starList) {
-            starList.style.marginBottom = "0";
-            starList.style.paddingBottom = "0";
-        }
+        targetElement.style.gap = "15px";
+    }
+} else {
+    // Every other store: D&R, BKM Kitap, Idefix and the rest declare the book they sell as
+    // schema.org data for search engines, ISBN included, so one reader covers them all.
+    const book = getStructuredBook();
+    if (book) {
+        identifier = book.isbn;
+        structuredTitle = book.title;
+        targetElement = document.querySelector("h1");
     }
 }
 
@@ -39,13 +44,48 @@ function isAmazonBookPage() {
 function isKitapyurduBookPage() {
     // Product pages contain /p- in the URL
     if (!/\/kitap\//.test(window.location.pathname)) return false;
-    // Must have an ISBN row in the attributes table
-    const rows = document.querySelectorAll(".attributes table tr");
-    for (let row of rows) {
-        const cells = row.querySelectorAll("td");
-        if (cells.length === 2 && cells[0].innerText.includes("ISBN:")) return true;
+    // Must have an ISBN row in the attributes list
+    return getKitapyurduIsbnRows().length > 0;
+}
+
+// Kitapyurdu's 2026 redesign replaced the ".attributes table" with label/value pairs.
+function getKitapyurduIsbnRows() {
+    const rows = document.querySelectorAll(".ky-pd-attributes__item");
+    return Array.from(rows).filter(row => {
+        const label = row.querySelector(".ky-pd-attributes__label");
+        return label && label.innerText.includes("ISBN");
+    });
+}
+
+// The book a page declares in its JSON-LD: {isbn, title}, or null when it declares none.
+// An ISBN-13 is an EAN starting 978 or 979, so a gtin13 is only taken when it is one: a store's
+// non-book product never passes for a book.
+function getStructuredBook() {
+    for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
+        // D&R writes raw newlines and tabs inside its description strings, which JSON.parse
+        // rejects, so the whole block failed and no box showed. As spaces they parse.
+        let data;
+        try { data = JSON.parse(script.textContent.replace(/[\u0000-\u001f]+/g, " ")); } catch { continue; }
+        const stack = [data];
+        while (stack.length) {
+            const node = stack.pop();
+            if (Array.isArray(node)) { stack.push(...node); continue; }
+            if (!node || typeof node !== "object") continue;
+            const types = [].concat(node["@type"] || []);
+            if (types.includes("Book") || types.includes("Product")) {
+                for (const key of ["isbn", "gtin13", "gtin"]) {
+                    const value = String(node[key] || "").replace(/[^0-9Xx]/g, "");
+                    if (/^97[89]\d{10}$/.test(value) || (key === "isbn" && /^\d{9}[\dXx]$/.test(value))) {
+                        return { isbn: value.toUpperCase(), title: typeof node.name === "string" ? node.name : null };
+                    }
+                }
+            }
+            for (const value of Object.values(node)) {
+                if (value && typeof value === "object") stack.push(value);
+            }
+        }
     }
-    return false;
+    return null;
 }
 
 // --- EXTRACTION LOGIC ---
@@ -62,22 +102,18 @@ function getAmazonIdentifier() {
 }
 
 function getKitapyurduIdentifier() {
-    const rows = document.querySelectorAll(".attributes table tr");
     let fallbackIsbn = null;
-    
-    for (let row of rows) {
-        const cells = row.querySelectorAll("td");
-        
-        if (cells.length === 2 && cells[0].innerText.includes("ISBN:")) {
-            const cleanIsbn = cells[1].innerText.replace(/-/g, '').trim();
-            
-            if (cleanIsbn.length === 13) {
-                return cleanIsbn;
-            }
-            
-            if (!fallbackIsbn) {
-                fallbackIsbn = cleanIsbn;
-            }
+
+    for (let row of getKitapyurduIsbnRows()) {
+        const value = row.querySelector(".ky-pd-attributes__value");
+        const cleanIsbn = value ? value.innerText.replace(/-/g, '').trim() : "";
+
+        if (cleanIsbn.length === 13) {
+            return cleanIsbn;
+        }
+
+        if (!fallbackIsbn && cleanIsbn) {
+            fallbackIsbn = cleanIsbn;
         }
     }
     return fallbackIsbn;
@@ -86,16 +122,21 @@ function getKitapyurduIdentifier() {
 // Fallback query for Goodreads; drops edition noise like "(Penguin Classics)".
 function getTitle() {
     const node = document.querySelector("#productTitle, h1");
-    return node ? node.innerText.replace(/\(.*?\)|\[.*?\]/g, "").trim() : null;
+    const text = structuredTitle || (node ? node.innerText : null);
+    return text ? text.replace(/\(.*?\)|\[.*?\]/g, "").trim() : null;
 }
 
 // --- MAIN EXECUTION ---
+
+const CACHE_DAYS = 30;
 
 if (identifier && targetElement) {
     injectSkeleton(targetElement, insertPosition);
 
     chrome.storage.local.get([identifier], (result) => {
-        if (result[identifier]) {
+        // Ratings move slowly but they do move, and entries from before 1.2 carry no date.
+        const cached = result[identifier];
+        if (cached && cached.at && Date.now() - cached.at < CACHE_DAYS * 864e5) {
             const data = result[identifier];
             updateUI(data.rating, data.count, data.url, identifier, targetElement);
         } else {
@@ -109,7 +150,8 @@ if (identifier && targetElement) {
                 cacheData[identifier] = {
                     rating: response.rating,
                     count: response.count,
-                    url: response.url
+                    url: response.url,
+                    at: Date.now()
                 };
                 chrome.storage.local.set(cacheData);
 
