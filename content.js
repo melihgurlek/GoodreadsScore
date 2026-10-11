@@ -10,19 +10,14 @@ if (hostname.includes("amazon") && isAmazonBookPage()) {
     targetElement = document.getElementById("bylineInfo") || document.getElementById("title");
 } else if (hostname.includes("kitapyurdu.com") && isKitapyurduBookPage()) {
     identifier = getKitapyurduIdentifier();
-    targetElement = document.querySelector(".rating"); 
-    insertPosition = "beforeend"; 
-    
+    // The row holding the store's own stars and review count, under the author.
+    targetElement = document.querySelector(".ky-pd-heading__meta");
+    insertPosition = "beforeend";
+
     if (targetElement) {
         targetElement.style.display = "flex";
         targetElement.style.alignItems = "center";
-        targetElement.style.gap = "15px"; 
-        
-        const starList = targetElement.querySelector("ul");
-        if (starList) {
-            starList.style.marginBottom = "0";
-            starList.style.paddingBottom = "0";
-        }
+        targetElement.style.gap = "15px";
     }
 } else {
     // Every other store: D&R, BKM Kitap, Idefix and the rest declare the book they sell as
@@ -49,13 +44,17 @@ function isAmazonBookPage() {
 function isKitapyurduBookPage() {
     // Product pages contain /p- in the URL
     if (!/\/kitap\//.test(window.location.pathname)) return false;
-    // Must have an ISBN row in the attributes table
-    const rows = document.querySelectorAll(".attributes table tr");
-    for (let row of rows) {
-        const cells = row.querySelectorAll("td");
-        if (cells.length === 2 && cells[0].innerText.includes("ISBN:")) return true;
-    }
-    return false;
+    // Must have an ISBN row in the attributes list
+    return getKitapyurduIsbnRows().length > 0;
+}
+
+// Kitapyurdu's 2026 redesign replaced the ".attributes table" with label/value pairs.
+function getKitapyurduIsbnRows() {
+    const rows = document.querySelectorAll(".ky-pd-attributes__item");
+    return Array.from(rows).filter(row => {
+        const label = row.querySelector(".ky-pd-attributes__label");
+        return label && label.innerText.includes("ISBN");
+    });
 }
 
 // The book a page declares in its JSON-LD: {isbn, title}, or null when it declares none.
@@ -103,22 +102,18 @@ function getAmazonIdentifier() {
 }
 
 function getKitapyurduIdentifier() {
-    const rows = document.querySelectorAll(".attributes table tr");
     let fallbackIsbn = null;
-    
-    for (let row of rows) {
-        const cells = row.querySelectorAll("td");
-        
-        if (cells.length === 2 && cells[0].innerText.includes("ISBN:")) {
-            const cleanIsbn = cells[1].innerText.replace(/-/g, '').trim();
-            
-            if (cleanIsbn.length === 13) {
-                return cleanIsbn;
-            }
-            
-            if (!fallbackIsbn) {
-                fallbackIsbn = cleanIsbn;
-            }
+
+    for (let row of getKitapyurduIsbnRows()) {
+        const value = row.querySelector(".ky-pd-attributes__value");
+        const cleanIsbn = value ? value.innerText.replace(/-/g, '').trim() : "";
+
+        if (cleanIsbn.length === 13) {
+            return cleanIsbn;
+        }
+
+        if (!fallbackIsbn && cleanIsbn) {
+            fallbackIsbn = cleanIsbn;
         }
     }
     return fallbackIsbn;
