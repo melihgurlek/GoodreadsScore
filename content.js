@@ -63,8 +63,10 @@ function isKitapyurduBookPage() {
 // non-book product never passes for a book.
 function getStructuredBook() {
     for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
+        // D&R writes raw newlines and tabs inside its description strings, which JSON.parse
+        // rejects, so the whole block failed and no box showed. As spaces they parse.
         let data;
-        try { data = JSON.parse(script.textContent); } catch { continue; }
+        try { data = JSON.parse(script.textContent.replace(/[\u0000-\u001f]+/g, " ")); } catch { continue; }
         const stack = [data];
         while (stack.length) {
             const node = stack.pop();
