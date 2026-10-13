@@ -1,7 +1,14 @@
 const GOODREADS = "https://www.goodreads.com";
 
-function fetchPage(url) {
-    return fetch(url).then(response => response.text().then(html => ({ html, finalUrl: response.url })));
+// Too many searches and Goodreads answers with an empty 202 (its bot check) or a 429/503
+// instead of the page. That is not "no such book", so it surfaces as its own error.
+class BlockedError extends Error {}
+
+async function fetchPage(url) {
+    const response = await fetch(url);
+    const html = await response.text();
+    if ([202, 429, 503].includes(response.status) || !html) throw new BlockedError(`${response.status} for ${url}`);
+    return { html, finalUrl: response.url };
 }
 
 // Service workers have no DOMParser, and Goodreads escapes non-ASCII titles as entities.
@@ -89,10 +96,11 @@ function overlap(a, b) {
     return 2 * shared / (setA.size + setB.size);
 }
 
-// Either side may carry a subtitle the other lacks ("Sapiens" vs "Sapiens: A Brief History…"),
-// so the parts before a colon are compared too.
+// Either side may carry a subtitle the other lacks ("Sapiens" vs "Sapiens: A Brief History…",
+// "Değirmen - Bütün Yapıtları" vs "Değirmen"), so the parts before a colon or dash are
+// compared too.
 function titleScore(wanted, found) {
-    const main = text => words(text.split(":")[0]);
+    const main = text => words(text.split(/:|\s[-–]\s/)[0]);
     return Math.max(overlap(words(wanted), words(found)), overlap(main(wanted), main(found)));
 }
 
@@ -139,25 +147,45 @@ async function openBook(book) {
 }
 
 async function findBook({ id, title, author }) {
-    // A book reached straight from its ISBN or ASIN is the book.
-    const byId = await search(id);
+    // A book reached straight from its ISBN or ASIN is the book. Search result cards on
+    // Kitapyurdu carry neither, only a title.
+    const byId = id ? await search(id) : [];
     if (byId.length && byId[0].rating) return byId[0];
     if (!title) return byId.length ? openBook(byId[0]) : null;
 
     // Goodreads' ISBN search started returning 0 results (Sep 2026), so fall back to the title.
-    // Adding the author pushes the right book up for short titles, but can also narrow the
-    // results to lesser editions ("Suç ve Ceza 2.Cilt"), so both searches are pooled.
-    const queries = author ? [`${title} ${author}`, title] : [title];
+    // Only its main part is searched: Goodreads finds nothing for "Değirmen - Bütün Yapıtları
+    // Sabahattin Ali", but "Değirmen Sabahattin Ali" works, and pickBook still weighs the
+    // whole title. Adding the author pushes the right book up for short titles, but can also
+    // narrow the results to lesser editions ("Suç ve Ceza 2.Cilt"), so both searches are pooled.
+    const main = title.split(/:|\s[-–]\s/)[0].trim() || title;
+    const queries = author ? [`${main} ${author}`, main] : [main];
     const candidates = byId.concat(...await Promise.all(queries.map(search)));
     const match = pickBook(candidates, title, author);
     return match ? openBook(match) : null;
 }
 
+// Once blocked, asking again only prolongs it, so lookups pause for a while. The worker may
+// be restarted meanwhile and forget; then the next lookup finds out again.
+const BLOCK_PAUSE_MS = 5 * 60 * 1000;
+let blockedUntil = 0;
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.type === "FETCH_RATING" && request.id) {
+    if (request.type === "FETCH_RATING" && (request.id || request.title)) {
+        if (Date.now() < blockedUntil) {
+            sendResponse({ rating: null, blocked: true });
+            return;
+        }
+
         findBook(request)
             .then(result => sendResponse(result || { rating: null }))
             .catch(error => {
+                if (error instanceof BlockedError) {
+                    blockedUntil = Date.now() + BLOCK_PAUSE_MS;
+                    console.warn("[Goodreads Ext] Goodreads is refusing requests, pausing:", error.message);
+                    sendResponse({ rating: null, blocked: true });
+                    return;
+                }
                 console.error("[Goodreads Ext] Error:", error);
                 sendResponse({ rating: null });
             });
