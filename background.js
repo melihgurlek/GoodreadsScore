@@ -28,14 +28,31 @@ function parseBookPage({ html, finalUrl }) {
     const countMatch = html.match(/data-testid="ratingsCount"[^>]*>\s*([\d.,\s]+)/i)
                      || html.match(/"ratingCount":\s*"?([\d]+)"?/);
     const titleMatch = html.match(/data-testid="bookTitle"[^>]*>([^<]+)/);
+    const reviewsMatch = html.match(/data-testid="reviewsCount"[^>]*>\s*([\d.,]+)/);
+    const count = countMatch ? parseCount(countMatch[1]) : null;
 
     return {
         rating: ratingMatch[1],
-        count: countMatch ? parseCount(countMatch[1]) : null,
+        count,
+        reviews: reviewsMatch ? parseCount(reviewsMatch[1]) : null,
+        dist: parseDistribution(html, count),
+        genres: [...html.matchAll(/BookPageMetadataSection__genreButton"><a [^>]*><span class="Button__labelItem">([^<]+)/g)]
+            .map(m => decodeEntities(m[1])).slice(0, 3),
         url: finalUrl,
         title: titleMatch ? decodeEntities(titleMatch[1]) : null,
         authors: [...html.matchAll(/data-testid="name">([^<]+)/g)].map(m => decodeEntities(m[1]))
     };
+}
+
+// Ratings per star, 1★ first. The page's data also holds the works of other books it links
+// to (the rest of a series), so the list whose total is the book's own count is the one.
+function parseDistribution(html, count) {
+    const lists = [...html.matchAll(/"ratingsCountDist":\[(\d+),(\d+),(\d+),(\d+),(\d+)\]/g)]
+        .map(m => m.slice(1).map(Number));
+    if (!lists.length) return null;
+    const total = list => list.reduce((sum, n) => sum + n, 0);
+    return count == null ? lists[0]
+        : lists.reduce((best, list) => Math.abs(total(list) - count) < Math.abs(total(best) - count) ? list : best);
 }
 
 // The rows of a search results page: [{path, title, authors, count}].
