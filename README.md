@@ -1,6 +1,6 @@
-# Goodreads on Amazon
+# Goodreads Puanı
 
-A Chrome extension that shows Goodreads ratings on Amazon and Kitapyurdu book pages.
+A Chrome extension that shows Goodreads ratings on book pages at Amazon, Kitapyurdu and other bookstores.
 
 ## What it does
 
@@ -13,6 +13,8 @@ A Chrome extension that shows Goodreads ratings on Amazon and Kitapyurdu book pa
 
 - `amazon.com.tr` — detects book pages via ISBN elements in the product details
 - `kitapyurdu.com` — detects book pages via `/kitap/` URL path + ISBN in attributes table
+- `amazon.com`, `amazon.co.uk`, `amazon.de` — same detection as `amazon.com.tr`
+- D&R, Idefix, BKM Kitap, Hepsiburada, Trendyol, Pandora, Babil, Kitapseç — read the ISBN, title and author from the page's schema.org (JSON-LD) data
 
 ## Installation
 
@@ -32,5 +34,5 @@ A Chrome extension that shows Goodreads ratings on Amazon and Kitapyurdu book pa
 ## Notes
 
 - Only activates on book pages, not search results or category pages
-- Goodreads is queried by ISBN (preferred) or ASIN, then by book title if that finds nothing (Goodreads' ISBN search stopped returning results in Sep 2026); a results page resolves to its first book
+- Goodreads is queried by ISBN (preferred) or ASIN, then by title and author if that finds nothing (Goodreads' ISBN search stopped returning results in Sep 2026). A title match must share most of its words with the store's title and, when the store names one, the author; otherwise the badge says the book wasn't found rather than showing another book's rating
 - Ratings are cached in `chrome.storage.local` — clear extension storage to force a re-fetch
