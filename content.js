@@ -13,12 +13,6 @@ if (hostname.includes("amazon") && isAmazonBookPage()) {
     // The row holding the store's own stars and review count, under the author.
     targetElement = document.querySelector(".ky-pd-heading__meta");
     insertPosition = "beforeend";
-
-    if (targetElement) {
-        targetElement.style.display = "flex";
-        targetElement.style.alignItems = "center";
-        targetElement.style.gap = "15px";
-    }
 } else {
     // Every other store: D&R, BKM Kitap, Idefix and the rest declare the book they sell as
     // schema.org data for search engines, ISBN included, so one reader covers them all.
@@ -160,6 +154,10 @@ const BADGE_STYLE = `
     .stars { position: relative; font-size: 14px; letter-spacing: 1px; color: rgba(128, 128, 128, 0.4); }
     .stars::before { content: "★★★★★"; }
     .stars::after { content: "★★★★★"; position: absolute; left: 0; top: 0; width: var(--fill); overflow: hidden; color: #e87400; }
+    .compact { gap: 6px; padding: 2px 10px 2px 3px; font-size: 12px; }
+    .compact .stars, .compact.loading .muted { display: none; }
+    .compact .rating::before { content: "★ "; color: #e87400; }
+    .compact.loading { padding-right: 3px; }
     .more { all: unset; display: inline-flex; margin: -4px -8px -4px -6px; padding: 4px 6px; border-radius: 999px; cursor: pointer; opacity: 0.6; }
     .more:hover, .more[aria-expanded="true"] { opacity: 1; }
     .more:focus-visible { outline: 2px solid #e87400; }
@@ -247,22 +245,28 @@ function wirePanel(root, host) {
     });
 }
 
-function mountBadge(targetNode, position) {
+// A compact badge sits on a search result card: no stars, only the logo while loading, and
+// gone entirely when Goodreads has no match.
+function mountBadge(targetNode, position, { compact = false } = {}) {
     // A tag of its own, so no store rule aimed at span or div reaches the host and leaks in.
     const host = document.createElement("goodreads-badge");
-    host.id = "goodreads-extension-ui";
-    if (position === "afterend") host.style.marginTop = "6px";
+    if (!compact) host.id = "goodreads-extension-ui";
+    if (position === "afterend") host.style.marginTop = compact ? "4px" : "6px";
     targetNode.insertAdjacentElement(position, host);
 
     const root = host.attachShadow({ mode: "closed" });
     const logoUrl = chrome.runtime.getURL("goodreads-logo.png");
     const render = (html, className = "") => {
-        root.innerHTML = `<style>${BADGE_STYLE}</style><span class="badge ${className}">${html}</span>`;
+        root.innerHTML = `<style>${BADGE_STYLE}</style><span class="badge ${compact ? "compact" : ""} ${className}">${html}</span>`;
     };
 
     return {
         showLoading() {
             render(`<img src="${logoUrl}" alt=""><span class="muted">Goodreads puanı aranıyor…</span>`, "loading");
+        },
+
+        remove() {
+            host.remove();
         },
 
         showRating(book) {
@@ -298,6 +302,91 @@ function mountBadge(targetNode, position) {
     };
 }
 
+// --- SEARCH RESULTS ---
+
+// The result cards on a listing page, each {node, key, id, title, author, targets}. Generic stores
+// are left out: their listings carry no schema.org data and share no markup.
+function getResultCards() {
+    if (hostname.includes("amazon")) {
+        return [...document.querySelectorAll('[data-component-type="s-search-result"][data-asin]')].map(card => {
+            const title = card.querySelector("h2");
+            // Only books have an author link, which keeps the rest of a mixed search out.
+            const author = card.querySelector('a[href*="field-author="]');
+            if (!title || !author) return null;
+            // A printed book's ASIN is its ISBN-10; a Kindle one (B0…) only finds itself.
+            return { node: card, key: card.dataset.asin, id: card.dataset.asin, title: cleanTitle(title.innerText), author: author.innerText.trim(), targets: [title] };
+        }).filter(Boolean);
+    }
+    if (hostname.includes("kitapyurdu.com")) {
+        return [...document.querySelectorAll(".ky-product[data-product-id]")].map(card => {
+            // The grid and list layouts each have their own title, and CSS shows one. The
+            // badge goes under it: the grid's rating row is too narrow to hold it.
+            const targets = [...card.querySelectorAll(".ky-product-title")];
+            const author = card.querySelector(".ky-product-author a");
+            if (!targets.length) return null;
+            const title = cleanTitle(targets[0].innerText);
+            const authorName = author ? author.innerText.trim() : null;
+            // Keyed by title and author, not product: a search lists a book in a dozen editions,
+            // and they are all one book on Goodreads.
+            const key = `ky:${title}|${authorName || ""}`.toLocaleLowerCase("tr");
+            return { node: card, key, id: null, title, author: authorName, targets };
+        }).filter(Boolean);
+    }
+    return [];
+}
+
+function cleanTitle(text) {
+    return text.replace(/\(.*?\)|\[.*?\]/g, "").trim();
+}
+
+// Cards are only looked up once on screen, two at a time, so scrolling past a long listing
+// doesn't fire dozens of Goodreads searches at once.
+function watchResults() {
+    const queue = [];
+    let running = 0;
+    const next = () => {
+        while (running < 2 && queue.length) {
+            const { card, badges } = queue.shift();
+            running++;
+            getRating(card).then(book => {
+                badges.forEach(badge => book ? badge.showRating(book) : badge.remove());
+            }).finally(() => { running--; next(); });
+        }
+    };
+
+    const pending = new Map();
+    const observer = new IntersectionObserver(entries => {
+        for (const entry of entries) {
+            if (!entry.isIntersecting || !pending.has(entry.target)) continue;
+            queue.push(pending.get(entry.target));
+            pending.delete(entry.target);
+            observer.unobserve(entry.target);
+        }
+        next();
+    }, { rootMargin: "200px" });
+
+    const seen = new WeakSet();
+    const scan = () => {
+        for (const card of getResultCards()) {
+            if (seen.has(card.node)) continue;
+            seen.add(card.node);
+            const badges = card.targets.map(target => mountBadge(target, "afterend", { compact: true }));
+            badges.forEach(badge => badge.showLoading());
+            // The card, not a target: a layout's hidden rating row never comes into view.
+            pending.set(card.node, { card, badges });
+            observer.observe(card.node);
+        }
+    };
+
+    // Amazon and Kitapyurdu both add cards without a page load when filtering or paging.
+    let timer = null;
+    new MutationObserver(() => {
+        clearTimeout(timer);
+        timer = setTimeout(scan, 300);
+    }).observe(document.body, { childList: true, subtree: true });
+    scan();
+}
+
 // --- MAIN EXECUTION ---
 
 const CACHE_DAYS = 30;
@@ -305,28 +394,58 @@ const CACHE_DAYS = 30;
 // 1.4 added the rating distribution and genres.
 const CACHE_VERSION = 3;
 
-if (identifier && targetElement && !document.getElementById("goodreads-extension-ui")) {
-    const badge = mountBadge(targetElement, insertPosition);
-    const title = getTitle();
-    badge.showLoading();
+// Lookups still in flight, so editions of one book on a results page share one request.
+const inFlight = new Map();
 
-    chrome.storage.local.get([identifier], (result) => {
-        const cached = result[identifier];
-        if (cached && cached.v === CACHE_VERSION && Date.now() - cached.at < CACHE_DAYS * 864e5) {
-            badge.showRating(cached);
-            return;
-        }
+// The cached rating for a book, or a fresh one from Goodreads; null when it isn't found.
+function getRating(book) {
+    if (!inFlight.has(book.key)) {
+        inFlight.set(book.key, lookUpRating(book).finally(() => inFlight.delete(book.key)));
+    }
+    return inFlight.get(book.key);
+}
 
-        chrome.runtime.sendMessage({ type: "FETCH_RATING", id: identifier, title, author: getAuthor() }, (response) => {
-            if (chrome.runtime.lastError || !response || !response.rating) {
-                badge.showNotFound(title || identifier);
+function lookUpRating({ key, id, title, author }) {
+    return new Promise(resolve => {
+        chrome.storage.local.get([key], (result) => {
+            const cached = result[key];
+            if (cached && cached.v === CACHE_VERSION && Date.now() - cached.at < CACHE_DAYS * 864e5) {
+                resolve(cached);
                 return;
             }
 
-            const { rating, count, reviews, dist, genres, url } = response;
-            const entry = { rating, count, reviews, dist, genres, url, at: Date.now(), v: CACHE_VERSION };
-            chrome.storage.local.set({ [identifier]: entry });
-            badge.showRating(entry);
+            chrome.runtime.sendMessage({ type: "FETCH_RATING", id, title, author }, (response) => {
+                if (chrome.runtime.lastError || !response || !response.rating) {
+                    resolve(null);
+                    return;
+                }
+
+                const { rating, count, reviews, dist, genres, url } = response;
+                const entry = { rating, count, reviews, dist, genres, url, at: Date.now(), v: CACHE_VERSION };
+                chrome.storage.local.set({ [key]: entry });
+                resolve(entry);
+            });
         });
     });
 }
+
+loadSettings(settings => {
+    if (!settings.sites[siteGroup(hostname)]) return;
+
+    if (identifier && targetElement && !document.getElementById("goodreads-extension-ui")) {
+        if (insertPosition === "beforeend") {
+            // Kitapyurdu's meta row stacks its children; the badge belongs beside the stars.
+            targetElement.style.display = "flex";
+            targetElement.style.alignItems = "center";
+            targetElement.style.gap = "15px";
+        }
+
+        const badge = mountBadge(targetElement, insertPosition);
+        const title = getTitle();
+        badge.showLoading();
+        getRating({ key: identifier, id: identifier, title, author: getAuthor() })
+            .then(book => book ? badge.showRating(book) : badge.showNotFound(title || identifier));
+    }
+
+    if (settings.searchResults) watchResults();
+});

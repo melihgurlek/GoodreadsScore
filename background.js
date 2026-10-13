@@ -139,8 +139,9 @@ async function openBook(book) {
 }
 
 async function findBook({ id, title, author }) {
-    // A book reached straight from its ISBN or ASIN is the book.
-    const byId = await search(id);
+    // A book reached straight from its ISBN or ASIN is the book. Search result cards on
+    // Kitapyurdu carry neither, only a title.
+    const byId = id ? await search(id) : [];
     if (byId.length && byId[0].rating) return byId[0];
     if (!title) return byId.length ? openBook(byId[0]) : null;
 
@@ -154,7 +155,7 @@ async function findBook({ id, title, author }) {
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.type === "FETCH_RATING" && request.id) {
+    if (request.type === "FETCH_RATING" && (request.id || request.title)) {
         findBook(request)
             .then(result => sendResponse(result || { rating: null }))
             .catch(error => {

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Goodreads Puanı",
-  "version": "1.4",
+  "version": "1.5",
   "description": "Amazon, Kitapyurdu, D&R, BKM Kitap, Idefix ve diğer kitapçıların kitap sayfalarında Goodreads puanını gösterir.",
   "permissions": [
     "storage"
@@ -16,6 +16,7 @@
   },
   "action": {
       "default_title": "Goodreads Puanı",
+      "default_popup": "popup.html",
       "default_icon": {
           "16": "goodreads-logo16.png",
           "48": "goodreads-logo48.png",
@@ -62,7 +63,7 @@
         "*://*.babil.com/*",
         "*://*.kitapsec.com/*"
       ],
-      "js": ["content.js"]
+      "js": ["settings.js", "content.js"]
     }
   ]
 }

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="tr">
+<head>
+    <meta charset="utf-8">
+    <title>Goodreads Puanı</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <header>
+        <img src="goodreads-logo48.png" alt="">
+        <h1>Goodreads Puanı</h1>
+        <span id="version"></span>
+    </header>
+
+    <section>
+        <h2>Siteler</h2>
+        <label><span>Amazon</span><input type="checkbox" data-site="amazon"></label>
+        <label><span>Kitapyurdu</span><input type="checkbox" data-site="kitapyurdu"></label>
+        <label><span>D&amp;R, Idefix, BKM ve diğerleri</span><input type="checkbox" data-site="other"></label>
+    </section>
+
+    <section>
+        <label>
+            <span>
+                Arama sonuçlarında göster
+                <small>Amazon ve Kitapyurdu listelerinde her kitabın yanında. Her kitap Goodreads'te ayrıca aranır.</small>
+            </span>
+            <input type="checkbox" id="search-results">
+        </label>
+    </section>
+
+    <footer>
+        <span id="cache-count"></span>
+        <button id="clear-cache" type="button">Önbelleği temizle</button>
+    </footer>
+    <p class="hint">Değişiklikler sayfa yenilenince geçerli olur.</p>
+
+    <script src="settings.js"></script>
+    <script src="popup.js"></script>
+</body>
+</html>
