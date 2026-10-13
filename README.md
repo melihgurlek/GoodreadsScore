@@ -7,6 +7,7 @@ A Chrome extension that shows Goodreads ratings on book pages at Amazon, Kitapyu
 - Injects a Goodreads rating + review count next to the book title/byline
 - Clicking the rating opens the Goodreads page for the book
 - Clicking the review count jumps straight to the community reviews section
+- The arrow next to the badge opens the rating distribution, review count and top genres
 - Caches results locally so repeat visits don't re-fetch
 
 ## Supported sites

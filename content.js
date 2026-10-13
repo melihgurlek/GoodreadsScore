@@ -160,10 +160,92 @@ const BADGE_STYLE = `
     .stars { position: relative; font-size: 14px; letter-spacing: 1px; color: rgba(128, 128, 128, 0.4); }
     .stars::before { content: "★★★★★"; }
     .stars::after { content: "★★★★★"; position: absolute; left: 0; top: 0; width: var(--fill); overflow: hidden; color: #e87400; }
+    .more { all: unset; display: inline-flex; margin: -4px -8px -4px -6px; padding: 4px 6px; border-radius: 999px; cursor: pointer; opacity: 0.6; }
+    .more:hover, .more[aria-expanded="true"] { opacity: 1; }
+    .more:focus-visible { outline: 2px solid #e87400; }
+    .more[aria-expanded="true"] svg { transform: rotate(180deg); }
+
+    /* The panel sits over the store's page, whose colors are unknown, so it brings its own. */
+    .panel { position: fixed; z-index: 2147483647; width: 260px; box-sizing: border-box; padding: 14px 16px; background: #fff; color: #1f1f1f; border: 1px solid rgba(0, 0, 0, 0.12); border-radius: 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14); white-space: normal; }
+    .panel[hidden] { display: none; }
+    .head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+    .big { font-size: 22px; font-weight: 600; }
+    .sub { font-size: 12px; color: #666; text-align: right; }
+    .row { display: flex; align-items: center; gap: 8px; margin: 5px 0; font-size: 12px; color: #555; }
+    .track { flex: 1; height: 6px; border-radius: 3px; background: #eee; overflow: hidden; }
+    .track i { display: block; height: 100%; background: #e87400; }
+    .pct { width: 34px; text-align: right; }
+    .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+    .tag { padding: 3px 8px; border-radius: 999px; background: #f2f0eb; color: #5f5e5a; font-size: 11px; }
+    .links { display: flex; justify-content: space-between; margin-top: 12px; font-size: 12px; }
+    .links a { color: #00635d; }
 `;
+
+const CHEVRON = `<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
 const compactNumber = new Intl.NumberFormat("tr", { notation: "compact" });
 const fullNumber = new Intl.NumberFormat("tr");
+
+// Genres come from Goodreads' page text, so they are escaped before going into markup.
+function escapeHtml(text) {
+    return String(text).replace(/[&<>"']/g, char => `&#${char.charCodeAt(0)};`);
+}
+
+function panelHtml({ rating, count, reviews, dist, genres, url }, reviewsUrl) {
+    const total = dist.reduce((sum, n) => sum + n, 0) || 1;
+    const rows = [5, 4, 3, 2, 1].map(stars => {
+        const pct = Math.round(dist[stars - 1] / total * 100);
+        return `<div class="row"><span>${stars}★</span><span class="track"><i style="width: ${pct}%"></i></span><span class="pct">%${pct}</span></div>`;
+    }).join("");
+    const totals = [count && `${fullNumber.format(count)} oy`, reviews && `${fullNumber.format(reviews)} yorum`].filter(Boolean);
+
+    return `
+        <div class="head"><span class="big">${rating}</span><span class="sub">${totals.join(" · ")}</span></div>
+        ${rows}
+        ${genres && genres.length ? `<div class="tags">${genres.map(genre => `<span class="tag">${escapeHtml(genre)}</span>`).join("")}</div>` : ""}
+        <div class="links">
+            <a href="${url}" target="_blank" rel="noopener"><span class="label">Goodreads'te aç ↗</span></a>
+            <a href="${reviewsUrl}" target="_blank" rel="noopener"><span class="label">Yorumları oku</span></a>
+        </div>
+    `;
+}
+
+// Fixed rather than absolute, so a store's overflow: hidden on the heading can't clip it.
+// It follows the badge on scroll, and opens upward when there is no room below.
+function wirePanel(root, host) {
+    const button = root.querySelector(".more");
+    const panel = root.querySelector(".panel");
+    const place = () => {
+        const badge = root.querySelector(".badge").getBoundingClientRect();
+        const below = badge.bottom + 6;
+        const fitsBelow = below + panel.offsetHeight <= window.innerHeight;
+        panel.style.top = `${fitsBelow ? below : Math.max(6, badge.top - 6 - panel.offsetHeight)}px`;
+        panel.style.left = `${Math.max(6, Math.min(badge.left, window.innerWidth - panel.offsetWidth - 6))}px`;
+    };
+    const setOpen = open => {
+        panel.hidden = !open;
+        button.setAttribute("aria-expanded", String(open));
+        if (open) {
+            place();
+            window.addEventListener("scroll", place, { passive: true, capture: true });
+            window.addEventListener("resize", place);
+        } else {
+            window.removeEventListener("scroll", place, { capture: true });
+            window.removeEventListener("resize", place);
+        }
+    };
+
+    button.addEventListener("click", () => setOpen(panel.hidden));
+    document.addEventListener("click", event => {
+        if (!panel.hidden && !event.composedPath().includes(host)) setOpen(false);
+    });
+    document.addEventListener("keydown", event => {
+        if (event.key === "Escape" && !panel.hidden) {
+            setOpen(false);
+            button.focus();
+        }
+    });
+}
 
 function mountBadge(targetNode, position) {
     // A tag of its own, so no store rule aimed at span or div reaches the host and leaks in.
@@ -183,7 +265,8 @@ function mountBadge(targetNode, position) {
             render(`<img src="${logoUrl}" alt=""><span class="muted">Goodreads puanı aranıyor…</span>`, "loading");
         },
 
-        showRating({ rating, count, url }) {
+        showRating(book) {
+            const { rating, count, url, dist } = book;
             const fill = Math.min(100, Math.max(0, parseFloat(rating) / 5 * 100));
             const reviewsUrl = url.includes("#") ? url : url + "#CommunityReviews";
             render(`
@@ -196,7 +279,11 @@ function mountBadge(targetNode, position) {
                 <a href="${reviewsUrl}" target="_blank" rel="noopener" title="${fullNumber.format(count)} oy">
                     <span class="muted label">${compactNumber.format(count)} oy</span>
                 </a>` : ""}
+                ${dist ? `
+                <button class="more" aria-expanded="false" aria-label="Puan dağılımını göster">${CHEVRON}</button>
+                <div class="panel" role="dialog" aria-label="Goodreads puan dağılımı" hidden>${panelHtml(book, reviewsUrl)}</div>` : ""}
             `);
+            if (dist) wirePanel(root, host);
         },
 
         showNotFound(query) {
@@ -214,8 +301,9 @@ function mountBadge(targetNode, position) {
 // --- MAIN EXECUTION ---
 
 const CACHE_DAYS = 30;
-// 1.3 stopped trusting the first title search result, so older entries may hold the wrong book.
-const CACHE_VERSION = 2;
+// 1.3 stopped trusting the first title search result, so older entries may hold the wrong book;
+// 1.4 added the rating distribution and genres.
+const CACHE_VERSION = 3;
 
 if (identifier && targetElement && !document.getElementById("goodreads-extension-ui")) {
     const badge = mountBadge(targetElement, insertPosition);
@@ -235,7 +323,8 @@ if (identifier && targetElement && !document.getElementById("goodreads-extension
                 return;
             }
 
-            const entry = { rating: response.rating, count: response.count, url: response.url, at: Date.now(), v: CACHE_VERSION };
+            const { rating, count, reviews, dist, genres, url } = response;
+            const entry = { rating, count, reviews, dist, genres, url, at: Date.now(), v: CACHE_VERSION };
             chrome.storage.local.set({ [identifier]: entry });
             badge.showRating(entry);
         });
