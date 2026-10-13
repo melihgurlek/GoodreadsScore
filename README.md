@@ -40,4 +40,5 @@ A Chrome extension that shows Goodreads ratings on book pages at Amazon, Kitapyu
 
 - Search result badges are off by default: result cards carry no ISBN, so each one costs Goodreads two or three title searches. Cards are looked up only once scrolled into view, two at a time, and a card with no match shows nothing
 - Goodreads is queried by ISBN (preferred) or ASIN, then by title and author if that finds nothing (Goodreads' ISBN search stopped returning results in Sep 2026). A title match must share most of its words with the store's title and, when the store names one, the author; otherwise the badge says the book wasn't found rather than showing another book's rating
+- When Goodreads answers too many searches with its bot check (an empty 202, or a 429/503), lookups pause for five minutes and the badge says Goodreads isn't responding, rather than that the book wasn't found
 - Ratings are cached in `chrome.storage.local` — use "Önbelleği temizle" in the popup to force a re-fetch

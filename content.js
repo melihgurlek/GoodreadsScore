@@ -290,6 +290,10 @@ function mountBadge(targetNode, position, { compact = false } = {}) {
             if (dist) wirePanel(root, host);
         },
 
+        showUnavailable() {
+            render(`<img src="${logoUrl}" alt=""><span class="muted">Goodreads şu an yanıt vermiyor, biraz sonra sayfayı yenile</span>`, "loading");
+        },
+
         showNotFound(query) {
             const searchUrl = `https://www.goodreads.com/search?q=${encodeURIComponent(query)}`;
             render(`
@@ -310,11 +314,11 @@ function getResultCards() {
     if (hostname.includes("amazon")) {
         return [...document.querySelectorAll('[data-component-type="s-search-result"][data-asin]')].map(card => {
             const title = card.querySelector("h2");
-            // Only books have an author link, which keeps the rest of a mixed search out.
-            const author = card.querySelector('a[href*="field-author="]');
-            if (!title || !author) return null;
+            const authorLine = getAmazonAuthorLine(card);
+            // Only books have an author line, which keeps the rest of a mixed search out.
+            if (!title || !authorLine) return null;
             // A printed book's ASIN is its ISBN-10; a Kindle one (B0…) only finds itself.
-            return { node: card, key: card.dataset.asin, id: card.dataset.asin, title: cleanTitle(title.innerText), author: author.innerText.trim(), targets: [title] };
+            return { node: card, key: card.dataset.asin, id: card.dataset.asin, title: cleanTitle(title.innerText), author: firstAuthor(authorLine), targets: [title] };
         }).filter(Boolean);
     }
     if (hostname.includes("kitapyurdu.com")) {
@@ -335,6 +339,22 @@ function getResultCards() {
     return [];
 }
 
+// amazon.com links the author ("by <a>Name</a>"); amazon.com.tr writes it as plain text,
+// "Sabahattin Ali | 1 Ekim 2003". null when the card has no author line.
+function getAmazonAuthorLine(card) {
+    const link = card.querySelector('a[href*="field-author="]');
+    if (link && link.innerText.trim()) return link.innerText;
+    const row = [...card.querySelectorAll(".a-row")].find(row => /^[^|]+\|\s*\d{1,2} \S+ \d{4}$/.test(row.innerText.trim()));
+    return row ? row.innerText.split("|")[0] : null;
+}
+
+// A translator may follow the author ("X ve Y"), and only the first name is the one Goodreads
+// files the book under. Placeholders like "Kolektif" are no author at all.
+function firstAuthor(line) {
+    const name = line.split(/\s+(?:ve|and|und)\s+|,/)[0].trim();
+    return /^(kolektif|belirtilmemiş|various|anonymous|anonim)$/i.test(name) ? null : name || null;
+}
+
 function cleanTitle(text) {
     return text.replace(/\(.*?\)|\[.*?\]/g, "").trim();
 }
@@ -349,7 +369,7 @@ function watchResults() {
             const { card, badges } = queue.shift();
             running++;
             getRating(card).then(book => {
-                badges.forEach(badge => book ? badge.showRating(book) : badge.remove());
+                badges.forEach(badge => book && book !== BLOCKED ? badge.showRating(book) : badge.remove());
             }).finally(() => { running--; next(); });
         }
     };
@@ -394,10 +414,13 @@ const CACHE_DAYS = 30;
 // 1.4 added the rating distribution and genres.
 const CACHE_VERSION = 3;
 
+const BLOCKED = "blocked";
+
 // Lookups still in flight, so editions of one book on a results page share one request.
 const inFlight = new Map();
 
-// The cached rating for a book, or a fresh one from Goodreads; null when it isn't found.
+// The cached rating for a book, or a fresh one from Goodreads; null when it isn't found, and
+// BLOCKED when Goodreads refused to answer, which says nothing about the book.
 function getRating(book) {
     if (!inFlight.has(book.key)) {
         inFlight.set(book.key, lookUpRating(book).finally(() => inFlight.delete(book.key)));
@@ -415,6 +438,10 @@ function lookUpRating({ key, id, title, author }) {
             }
 
             chrome.runtime.sendMessage({ type: "FETCH_RATING", id, title, author }, (response) => {
+                if (!chrome.runtime.lastError && response && response.blocked) {
+                    resolve(BLOCKED);
+                    return;
+                }
                 if (chrome.runtime.lastError || !response || !response.rating) {
                     resolve(null);
                     return;
@@ -444,7 +471,8 @@ loadSettings(settings => {
         const title = getTitle();
         badge.showLoading();
         getRating({ key: identifier, id: identifier, title, author: getAuthor() })
-            .then(book => book ? badge.showRating(book) : badge.showNotFound(title || identifier));
+            .then(book => book === BLOCKED ? badge.showUnavailable()
+                : book ? badge.showRating(book) : badge.showNotFound(title || identifier));
     }
 
     if (settings.searchResults) watchResults();
