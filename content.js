@@ -210,9 +210,26 @@ function panelHtml({ rating, count, reviews, dist, genres, url }, reviewsUrl) {
 
 // Fixed rather than absolute, so a store's overflow: hidden on the heading can't clip it.
 // It follows the badge on scroll, and opens upward when there is no room below.
-function wirePanel(root, host) {
+// The panel is filled on first open when the badge came from a search row and the
+// distribution still has to be fetched from the book page.
+function wirePanel(root, host, loadFull, reviewsUrl) {
     const button = root.querySelector(".more");
     const panel = root.querySelector(".panel");
+    let filled = false;
+    const fill = () => {
+        if (filled) return;
+        filled = true;
+        panel.innerHTML = `<p class="sub">Puan dağılımı yükleniyor…</p>`;
+        loadFull().then(full => {
+            if (full && full.dist) {
+                panel.innerHTML = panelHtml(full, reviewsUrl);
+            } else {
+                panel.innerHTML = `<p class="sub">Dağılım şu an yüklenemedi.</p>`;
+                filled = false;
+            }
+            if (!panel.hidden) place();
+        });
+    };
     const place = () => {
         const badge = root.querySelector(".badge").getBoundingClientRect();
         const below = badge.bottom + 6;
@@ -224,6 +241,7 @@ function wirePanel(root, host) {
         panel.hidden = !open;
         button.setAttribute("aria-expanded", String(open));
         if (open) {
+            fill();
             place();
             window.addEventListener("scroll", place, { passive: true, capture: true });
             window.addEventListener("resize", place);
@@ -269,8 +287,14 @@ function mountBadge(targetNode, position, { compact = false } = {}) {
             host.remove();
         },
 
-        showRating(book) {
+        // loadFull resolves to the book with its distribution; prefetch starts it right away.
+        showRating(book, loadFull, { prefetch = false } = {}) {
             const { rating, count, url, dist } = book;
+            let full = dist ? Promise.resolve(book) : null;
+            const getFull = () => full || (full = loadFull().then(result => {
+                if (!result) full = null;
+                return result;
+            }));
             const fill = Math.min(100, Math.max(0, parseFloat(rating) / 5 * 100));
             const reviewsUrl = url.includes("#") ? url : url + "#CommunityReviews";
             render(`
@@ -283,11 +307,11 @@ function mountBadge(targetNode, position, { compact = false } = {}) {
                 <a href="${reviewsUrl}" target="_blank" rel="noopener" title="${fullNumber.format(count)} oy">
                     <span class="muted label">${compactNumber.format(count)} oy</span>
                 </a>` : ""}
-                ${dist ? `
                 <button class="more" aria-expanded="false" aria-label="Puan dağılımını göster">${CHEVRON}</button>
-                <div class="panel" role="dialog" aria-label="Goodreads puan dağılımı" hidden>${panelHtml(book, reviewsUrl)}</div>` : ""}
+                <div class="panel" role="dialog" aria-label="Goodreads puan dağılımı" hidden></div>
             `);
-            if (dist) wirePanel(root, host);
+            wirePanel(root, host, getFull, reviewsUrl);
+            if (prefetch && !dist) getFull();
         },
 
         showUnavailable() {
@@ -365,11 +389,12 @@ function watchResults() {
     const queue = [];
     let running = 0;
     const next = () => {
-        while (running < 2 && queue.length) {
+        while (running < 3 && queue.length) {
             const { card, badges } = queue.shift();
             running++;
             getRating(card).then(book => {
-                badges.forEach(badge => book && book !== BLOCKED ? badge.showRating(book) : badge.remove());
+                const loadFull = () => getDetails(card.key, book);
+                badges.forEach(badge => book && book !== BLOCKED ? badge.showRating(book, loadFull) : badge.remove());
             }).finally(() => { running--; next(); });
         }
     };
@@ -383,7 +408,8 @@ function watchResults() {
             observer.unobserve(entry.target);
         }
         next();
-    }, { rootMargin: "200px" });
+    // A screen's height ahead, so the cards below are ready by the time they're scrolled to.
+    }, { rootMargin: "100% 0px" });
 
     const seen = new WeakSet();
     const scan = () => {
@@ -410,6 +436,8 @@ function watchResults() {
 // --- MAIN EXECUTION ---
 
 const CACHE_DAYS = 30;
+// A book Goodreads doesn't have is asked about again after a while, in case it was added.
+const NOT_FOUND_DAYS = 2;
 // 1.3 stopped trusting the first title search result, so older entries may hold the wrong book;
 // 1.4 added the rating distribution and genres.
 const CACHE_VERSION = 3;
@@ -432,7 +460,12 @@ function lookUpRating({ key, id, title, author }) {
     return new Promise(resolve => {
         chrome.storage.local.get([key], (result) => {
             const cached = result[key];
-            if (cached && cached.v === CACHE_VERSION && Date.now() - cached.at < CACHE_DAYS * 864e5) {
+            const age = cached && cached.v === CACHE_VERSION ? Date.now() - cached.at : Infinity;
+            if (cached && cached.notFound && age < NOT_FOUND_DAYS * 864e5) {
+                resolve(null);
+                return;
+            }
+            if (cached && !cached.notFound && age < CACHE_DAYS * 864e5) {
                 resolve(cached);
                 return;
             }
@@ -442,7 +475,12 @@ function lookUpRating({ key, id, title, author }) {
                     resolve(BLOCKED);
                     return;
                 }
-                if (chrome.runtime.lastError || !response || !response.rating) {
+                if (chrome.runtime.lastError || !response) {
+                    resolve(null);
+                    return;
+                }
+                if (!response.rating) {
+                    chrome.storage.local.set({ [key]: { notFound: true, at: Date.now(), v: CACHE_VERSION } });
                     resolve(null);
                     return;
                 }
@@ -452,6 +490,23 @@ function lookUpRating({ key, id, title, author }) {
                 chrome.storage.local.set({ [key]: entry });
                 resolve(entry);
             });
+        });
+    });
+}
+
+// The book with its distribution, genres and review count, fetched from its book page and
+// saved over the cache entry; null when it can't be had right now.
+function getDetails(key, book) {
+    return new Promise(resolve => {
+        chrome.runtime.sendMessage({ type: "FETCH_DETAILS", url: book.url }, (response) => {
+            if (chrome.runtime.lastError || !response || !response.dist) {
+                resolve(null);
+                return;
+            }
+            const { dist, genres, reviews, count } = response;
+            const full = { ...book, dist, genres, reviews, count: count || book.count };
+            chrome.storage.local.set({ [key]: full });
+            resolve(full);
         });
     });
 }
@@ -470,9 +525,12 @@ loadSettings(settings => {
         const badge = mountBadge(targetElement, insertPosition);
         const title = getTitle();
         badge.showLoading();
+        // On the book's own page the panel is the likeliest next click, so its details are
+        // fetched as soon as the rating shows.
         getRating({ key: identifier, id: identifier, title, author: getAuthor() })
             .then(book => book === BLOCKED ? badge.showUnavailable()
-                : book ? badge.showRating(book) : badge.showNotFound(title || identifier));
+                : book ? badge.showRating(book, () => getDetails(identifier, book), { prefetch: true })
+                : badge.showNotFound(title || identifier));
     }
 
     if (settings.searchResults) watchResults();
