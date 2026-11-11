@@ -436,6 +436,8 @@ function watchResults() {
 // --- MAIN EXECUTION ---
 
 const CACHE_DAYS = 30;
+// A book Goodreads doesn't have is asked about again after a while, in case it was added.
+const NOT_FOUND_DAYS = 2;
 // 1.3 stopped trusting the first title search result, so older entries may hold the wrong book;
 // 1.4 added the rating distribution and genres.
 const CACHE_VERSION = 3;
@@ -458,7 +460,12 @@ function lookUpRating({ key, id, title, author }) {
     return new Promise(resolve => {
         chrome.storage.local.get([key], (result) => {
             const cached = result[key];
-            if (cached && cached.v === CACHE_VERSION && Date.now() - cached.at < CACHE_DAYS * 864e5) {
+            const age = cached && cached.v === CACHE_VERSION ? Date.now() - cached.at : Infinity;
+            if (cached && cached.notFound && age < NOT_FOUND_DAYS * 864e5) {
+                resolve(null);
+                return;
+            }
+            if (cached && !cached.notFound && age < CACHE_DAYS * 864e5) {
                 resolve(cached);
                 return;
             }
@@ -468,7 +475,12 @@ function lookUpRating({ key, id, title, author }) {
                     resolve(BLOCKED);
                     return;
                 }
-                if (chrome.runtime.lastError || !response || !response.rating) {
+                if (chrome.runtime.lastError || !response) {
+                    resolve(null);
+                    return;
+                }
+                if (!response.rating) {
+                    chrome.storage.local.set({ [key]: { notFound: true, at: Date.now(), v: CACHE_VERSION } });
                     resolve(null);
                     return;
                 }

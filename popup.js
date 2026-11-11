@@ -17,10 +17,11 @@ loadSettings(settings => {
     searchResultsBox.addEventListener("change", save);
 });
 
-// Everything in storage.local is a cached rating; the settings live in storage.sync.
+// Everything in storage.local is a cached lookup; the settings live in storage.sync. Books
+// Goodreads didn't have are cached too, but aren't counted.
 function showCacheCount() {
     chrome.storage.local.get(null, items => {
-        const count = Object.keys(items).length;
+        const count = Object.values(items).filter(item => item && !item.notFound).length;
         cacheCount.textContent = count ? `${count.toLocaleString("tr")} kitap önbellekte` : "Önbellek boş";
     });
 }
