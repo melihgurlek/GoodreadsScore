@@ -62,17 +62,22 @@ function parseDistribution(html, count) {
         : lists.reduce((best, list) => Math.abs(total(list) - count) < Math.abs(total(best) - count) ? list : best);
 }
 
-// The rows of a search results page: [{path, title, authors, count}].
+// The rows of a search results page: [{path, url, title, authors, rating, count}]. A row
+// carries the same work-wide rating and count as the book page, so a badge can show it
+// without fetching that page; only the distribution and genres need it.
 function parseResults(html) {
     return html.split('itemtype="http://schema.org/Book"').slice(1).map(row => {
         const link = row.match(/class="bookTitle"[^>]*href="(\/book\/show\/[^"?]+)/);
         const title = row.match(/<span itemprop='name'[^>]*>([^<]+)/);
+        const rating = row.match(/([\d.]+) avg rating/);
         const count = row.match(/([\d,]+) ratings?</);
         return {
             path: link ? link[1] : null,
+            url: link ? GOODREADS + link[1] : null,
             title: title ? decodeEntities(title[1]) : null,
             authors: [...row.matchAll(/class="authorName"[^>]*><span itemprop="name">([^<]+)/g)].map(m => decodeEntities(m[1])),
-            count: count ? parseCount(count[1]) : 0
+            rating: rating ? rating[1] : null,
+            count: count ? parseCount(count[1]) : null
         };
     }).filter(book => book.path && book.title);
 }
@@ -141,16 +146,17 @@ async function search(query) {
     return book ? [book] : parseResults(page.html);
 }
 
-// Search rows only carry a path; a book page already has its rating.
+// A search row is enough for the badge; its book page is only opened when the row's
+// rating could not be read.
 async function openBook(book) {
-    return book.rating ? book : parseBookPage(await fetchPage(GOODREADS + book.path));
+    return book.rating ? book : parseBookPage(await fetchPage(book.url));
 }
 
 async function findBook({ id, title, author }) {
-    // A book reached straight from its ISBN or ASIN is the book. Search result cards on
-    // Kitapyurdu carry neither, only a title.
+    // A book reached straight from its ISBN or ASIN is the book: a book page, which unlike a
+    // search row has no path. Search result cards on Kitapyurdu carry neither, only a title.
     const byId = id ? await search(id) : [];
-    if (byId.length && byId[0].rating) return byId[0];
+    if (byId.length && !byId[0].path) return byId[0];
     if (!title) return byId.length ? openBook(byId[0]) : null;
 
     // Goodreads' ISBN search started returning 0 results (Sep 2026), so fall back to the title.
@@ -170,26 +176,34 @@ async function findBook({ id, title, author }) {
 const BLOCK_PAUSE_MS = 5 * 60 * 1000;
 let blockedUntil = 0;
 
+// Answers a lookup, turning Goodreads' refusal into {blocked} and starting the pause.
+function respond(lookup, sendResponse) {
+    if (Date.now() < blockedUntil) {
+        sendResponse({ rating: null, blocked: true });
+        return;
+    }
+    lookup()
+        .then(result => sendResponse(result || { rating: null }))
+        .catch(error => {
+            if (error instanceof BlockedError) {
+                blockedUntil = Date.now() + BLOCK_PAUSE_MS;
+                console.warn("[Goodreads Ext] Goodreads is refusing requests, pausing:", error.message);
+                sendResponse({ rating: null, blocked: true });
+                return;
+            }
+            console.error("[Goodreads Ext] Error:", error);
+            sendResponse({ rating: null });
+        });
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.type === "FETCH_RATING" && (request.id || request.title)) {
-        if (Date.now() < blockedUntil) {
-            sendResponse({ rating: null, blocked: true });
-            return;
-        }
-
-        findBook(request)
-            .then(result => sendResponse(result || { rating: null }))
-            .catch(error => {
-                if (error instanceof BlockedError) {
-                    blockedUntil = Date.now() + BLOCK_PAUSE_MS;
-                    console.warn("[Goodreads Ext] Goodreads is refusing requests, pausing:", error.message);
-                    sendResponse({ rating: null, blocked: true });
-                    return;
-                }
-                console.error("[Goodreads Ext] Error:", error);
-                sendResponse({ rating: null });
-            });
-
+        respond(() => findBook(request), sendResponse);
+        return true;
+    }
+    // The book page behind a badge found from a search row, for its distribution and genres.
+    if (request.type === "FETCH_DETAILS" && String(request.url).startsWith(`${GOODREADS}/book/show/`)) {
+        respond(async () => parseBookPage(await fetchPage(request.url)), sendResponse);
         return true;
     }
 });
